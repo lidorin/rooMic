@@ -1,5 +1,5 @@
 // קבועים
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'https://lidorin.github.io/roomMic';
 
 // אלמנטים
 const screens = {
@@ -41,27 +41,13 @@ function generateRoomCode() {
 }
 
 // אירועים
-buttons.createRoom.addEventListener('click', async () => {
+buttons.createRoom.addEventListener('click', () => {
     const roomCode = generateRoomCode();
-    try {
-        const response = await fetch(`${API_URL}/rooms/create`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ code: roomCode })
-        });
-        
-        if (response.ok) {
-            inputs.roomCode.textContent = roomCode;
-            showScreen(screens.create);
-        } else {
-            alert('שגיאה ביצירת החדר. נסה שוב.');
-        }
-    } catch (error) {
-        console.error('Error creating room:', error);
-        alert('שגיאה ביצירת החדר. נסה שוב.');
-    }
+    inputs.roomCode.textContent = roomCode;
+    showScreen(screens.create);
+    // שמירת הקוד ב-localStorage
+    localStorage.setItem('roomCode', roomCode);
+    localStorage.setItem('isHost', 'true');
 });
 
 buttons.joinRoom.addEventListener('click', () => {
@@ -82,43 +68,34 @@ buttons.copyCode.addEventListener('click', () => {
         .catch(err => console.error('Error copying code:', err));
 });
 
-buttons.submitCode.addEventListener('click', async () => {
+buttons.submitCode.addEventListener('click', () => {
     const code = inputs.roomCodeInput.value;
     if (!code || code.length !== 4) {
         alert('אנא הזן קוד חדר תקין (4 ספרות)');
         return;
     }
 
-    try {
-        const response = await fetch(`${API_URL}/rooms/${code}`);
-        if (response.ok) {
-            showScreen(screens.broadcast);
-            // כאן נתחיל את החיבור WebRTC
-            initializeWebRTC(code);
-        } else {
-            alert('קוד חדר לא תקין או שהחדר לא קיים');
-        }
-    } catch (error) {
-        console.error('Error joining room:', error);
-        alert('שגיאה בהצטרפות לחדר. נסה שוב.');
-    }
+    // שמירת הקוד ב-localStorage
+    localStorage.setItem('roomCode', code);
+    localStorage.setItem('isHost', 'false');
+    showScreen(screens.broadcast);
+    initializeWebRTC(code);
 });
 
 buttons.startBroadcast.addEventListener('click', () => {
     showScreen(screens.broadcast);
-    // כאן נתחיל את השידור WebRTC
     initializeWebRTC(inputs.roomCode.textContent);
 });
 
 buttons.toggleMic.addEventListener('click', () => {
     const isMuted = buttons.toggleMic.textContent === 'הפעל מיקרופון';
     buttons.toggleMic.textContent = isMuted ? 'השתק מיקרופון' : 'הפעל מיקרופון';
-    // כאן נטפל בהשתקת/הפעלת המיקרופון
     toggleMicrophone(isMuted);
 });
 
 buttons.leaveRoom.addEventListener('click', () => {
-    // כאן נסגור את החיבור WebRTC
     closeWebRTC();
+    localStorage.removeItem('roomCode');
+    localStorage.removeItem('isHost');
     showScreen(screens.main);
 }); 

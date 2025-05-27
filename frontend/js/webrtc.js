@@ -24,8 +24,10 @@ async function initializeWebRTC(roomCode) {
         // טיפול באירועי ICE
         peerConnection.onicecandidate = event => {
             if (event.candidate) {
-                // שליחת המועמד לשרת
-                sendIceCandidate(event.candidate, roomCode);
+                // שמירת המועמד ב-localStorage
+                const candidates = JSON.parse(localStorage.getItem('iceCandidates') || '[]');
+                candidates.push(event.candidate);
+                localStorage.setItem('iceCandidates', JSON.stringify(candidates));
             }
         };
 
@@ -37,12 +39,32 @@ async function initializeWebRTC(roomCode) {
         };
 
         // אם אנחנו המארח, ניצור הצעה
-        if (isHost) {
+        if (localStorage.getItem('isHost') === 'true') {
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
-            // שליחת ההצעה לשרת
-            sendOffer(offer, roomCode);
+            // שמירת ההצעה ב-localStorage
+            localStorage.setItem('offer', JSON.stringify(offer));
+        } else {
+            // אם אנחנו משתתף, נחכה להצעה
+            const checkForOffer = setInterval(async () => {
+                const offer = JSON.parse(localStorage.getItem('offer'));
+                if (offer) {
+                    clearInterval(checkForOffer);
+                    await handleOffer(offer);
+                }
+            }, 1000);
         }
+
+        // בדיקת ICE candidates חדשים
+        const checkForCandidates = setInterval(async () => {
+            const candidates = JSON.parse(localStorage.getItem('iceCandidates') || '[]');
+            if (candidates.length > 0) {
+                for (const candidate of candidates) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+                localStorage.setItem('iceCandidates', '[]');
+            }
+        }, 1000);
 
         updateConnectionStatus('מחובר');
     } catch (error) {
@@ -78,74 +100,17 @@ function updateConnectionStatus(status) {
     }
 }
 
-// פונקציות תקשורת עם השרת
-async function sendOffer(offer, roomCode) {
-    try {
-        const response = await fetch(`${API_URL}/rooms/${roomCode}/offer`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ offer })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to send offer');
-        }
-    } catch (error) {
-        console.error('Error sending offer:', error);
-        updateConnectionStatus('שגיאה בשליחת הצעה');
-    }
-}
-
-async function sendIceCandidate(candidate, roomCode) {
-    try {
-        const response = await fetch(`${API_URL}/rooms/${roomCode}/ice`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ candidate })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to send ICE candidate');
-        }
-    } catch (error) {
-        console.error('Error sending ICE candidate:', error);
-    }
-}
-
-// פונקציה לקבלת הצעה מהשרת
-async function handleOffer(offer, roomCode) {
+// פונקציה לקבלת הצעה
+async function handleOffer(offer) {
     try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         
-        // שליחת התשובה לשרת
-        const response = await fetch(`${API_URL}/rooms/${roomCode}/answer`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ answer })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to send answer');
-        }
+        // שמירת התשובה ב-localStorage
+        localStorage.setItem('answer', JSON.stringify(answer));
     } catch (error) {
         console.error('Error handling offer:', error);
         updateConnectionStatus('שגיאה בטיפול בהצעה');
-    }
-}
-
-// פונקציה לקבלת ICE candidate מהשרת
-async function handleIceCandidate(candidate) {
-    try {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (error) {
-        console.error('Error handling ICE candidate:', error);
     }
 } 
