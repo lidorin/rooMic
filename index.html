@@ -3,53 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>חדר שידור אודיו</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>roomMic - חדר שידור אודיו</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div id="main-menu" class="screen">
-            <h1>חדר שידור אודיו</h1>
-            <div class="buttons">
-                <button id="create-room" class="btn">צור חדר חדש</button>
-                <button id="join-room" class="btn">הצטרף לחדר</button>
-            </div>
+            <h1>roomMic</h1>
+            <button id="create-room" class="btn">צור חדר חדש</button>
+            <button id="join-room" class="btn">הצטרף לחדר</button>
         </div>
-
-        <div id="create-room-screen" class="screen hidden">
-            <h2>חדר חדש נוצר</h2>
-            <div class="room-code">
+        <div id="create-screen" class="screen hidden">
+            <h2>חדר חדש</h2>
+            <div class="room-code-box">
                 <span id="room-code"></span>
                 <button id="copy-code" class="btn small">העתק קוד</button>
             </div>
             <button id="start-broadcast" class="btn">התחל שידור</button>
-            <button id="back-to-main" class="btn secondary">חזרה</button>
+            <button id="back-main-1" class="btn secondary">חזרה</button>
         </div>
-
-        <div id="join-room-screen" class="screen hidden">
+        <div id="join-screen" class="screen hidden">
             <h2>הצטרפות לחדר</h2>
-            <div class="input-group">
-                <input type="text" id="room-code-input" placeholder="הזן קוד חדר" maxlength="4">
-                <button id="submit-code" class="btn">הצטרף</button>
-            </div>
-            <button id="back-to-main-join" class="btn secondary">חזרה</button>
+            <input id="join-code" type="text" maxlength="8" placeholder="הזן קוד חדר">
+            <button id="join-confirm" class="btn">הצטרף</button>
+            <button id="back-main-2" class="btn secondary">חזרה</button>
         </div>
-
         <div id="broadcast-screen" class="screen hidden">
-            <h2>שידור פעיל</h2>
-            <div class="status">
-                <span id="connection-status">מתחבר...</span>
-            </div>
-            <div class="controls">
-                <button id="toggle-mic" class="btn">השתק מיקרופון</button>
-                <button id="leave-room" class="btn secondary">עזוב חדר</button>
-            </div>
+            <h2 id="broadcast-title">שידור פעיל</h2>
+            <div class="status" id="status">ממתין...</div>
+            <button id="toggle-mic" class="btn">השתק מיקרופון</button>
+            <button id="leave" class="btn secondary">עזוב חדר</button>
         </div>
     </div>
-
+    <audio id="remote-audio" autoplay></audio>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="js/main.js"></script>
-    <script src="js/room.js"></script>
-    <script src="js/webrtc.js"></script>
+    <script src="app.js"></script>
 </body>
 </html> 
