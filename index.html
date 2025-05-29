@@ -3,40 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>roomMic - חדר! שידור אודיו</title>
+    <title>roomMic 2.0 - שידור אודיו מרוכז</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <div id="main-menu" class="screen">
-            <h1>roomMic</h1>
-            <button id="create-room" class="btn">צוריו חדר חדש</button>
-            <button id="join-room" class="btn">הצטרף לחדר</button>
-        </div>
-        <div id="create-screen" class="screen hidden">
-            <h2>חדרים חדש</h2>
-            <div class="room-code-box">
-                <span id="room-code"></span>
-                <button id="copy-code" class="btn small">העתק קוד</button>
+    <!-- Main Menu Screen -->
+    <div id="main-screen" class="screen active">
+        <div class="container">
+            <div class="header">
+                <h1 class="logo">🎤 roomMic</h1>
+                <p class="subtitle">שידור אודיו מרוכז בזמן אמת</p>
             </div>
-            <button id="start-broadcast" class="btn">התחל שידור</button>
-            <button id="back-main-1" class="btn secondary">חזרה</button>
-        </div>
-        <div id="join-screen" class="screen hidden">
-            <h2>הצטרפות לחדר</h2>
-            <input id="join-code" type="text" maxlength="8" placeholder="הזן קוד חדר">
-            <button id="join-confirm" class="btn">הצטרף</button>
-            <button id="back-main-2" class="btn secondary">חזרה</button>
-        </div>
-        <div id="broadcast-screen" class="screen hidden">
-            <h2 id="broadcast-title">שידור פעיל</h2>
-            <div class="status" id="status">ממתין...</div>
-            <button id="toggle-mic" class="btn">השתק מיקרופון</button>
-            <button id="leave" class="btn secondary">עזוב חדר</button>
+            
+            <div class="menu-buttons">
+                <button id="btn-create-room" class="btn btn-primary">
+                    <span class="btn-icon">➕</span>
+                    צור חדר חדש
+                </button>
+                
+                <button id="btn-join-room" class="btn btn-secondary">
+                    <span class="btn-icon">🔗</span>
+                    הצטרף לחדר
+                </button>
+            </div>
         </div>
     </div>
-    <audio id="remote-audio" autoplay></audio>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <!-- Create Room Screen -->
+    <div id="create-screen" class="screen">
+        <div class="container">
+            <div class="header">
+                <h2>🏠 חדר חדש</h2>
+                <button id="btn-back-create" class="btn-back">← חזרה</button>
+            </div>
+            
+            <div class="room-info">
+                <div class="room-code-display">
+                    <label>קוד החדר:</label>
+                    <div id="room-code" class="code-display">----</div>
+                </div>
+                
+                <button id="btn-copy-code" class="btn btn-outline">
+                    <span class="btn-icon">📋</span>
+                    העתק קוד
+                </button>
+            </div>
+            
+            <div class="action-buttons">
+                <button id="btn-start-hosting" class="btn btn-primary btn-large">
+                    <span class="btn-icon">🎙️</span>
+                    התחל שידור
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Room Screen -->
+    <div id="join-screen" class="screen">
+        <div class="container">
+            <div class="header">
+                <h2>🔗 הצטרפות לחדר</h2>
+                <button id="btn-back-join" class="btn-back">← חזרה</button>
+            </div>
+            
+            <div class="join-form">
+                <label for="join-code-input">הזן קוד חדר (4 ספרות):</label>
+                <input type="text" id="join-code-input" class="code-input" maxlength="4" placeholder="0000">
+                
+                <button id="btn-join-confirm" class="btn btn-primary btn-large">
+                    <span class="btn-icon">🎧</span>
+                    הצטרף
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Session Screen -->
+    <div id="session-screen" class="screen">
+        <div class="container">
+            <div class="header">
+                <h2 id="session-title">🎤 שידור פעיל</h2>
+                <div id="session-info" class="session-info">
+                    <span id="participant-count">משתתפים: 0</span>
+                    <span id="connection-status" class="status">מתחבר...</span>
+                </div>
+            </div>
+            
+            <div class="session-controls">
+                <button id="btn-toggle-mic" class="btn btn-mic active">
+                    <span class="btn-icon">🎤</span>
+                    <span class="btn-text">מיקרופון פעיל</span>
+                </button>
+                
+                <div class="volume-indicator">
+                    <div class="volume-bars">
+                        <div class="volume-bar"></div>
+                        <div class="volume-bar"></div>
+                        <div class="volume-bar"></div>
+                        <div class="volume-bar"></div>
+                        <div class="volume-bar"></div>
+                    </div>
+                    <span class="volume-label">רמת אודיו</span>
+                </div>
+                
+                <button id="btn-leave-room" class="btn btn-danger">
+                    <span class="btn-icon">🚪</span>
+                    עזוב חדר
+                </button>
+            </div>
+            
+            <div class="session-details">
+                <div class="detail-item">
+                    <span class="detail-label">קוד חדר:</span>
+                    <span id="current-room-code" class="detail-value">----</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">תפקיד:</span>
+                    <span id="user-role" class="detail-value">משתתף</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="status-toast" class="toast">
+        <span id="status-message">מוכן</span>
+    </div>
+
+    <!-- Hidden Audio Element -->
+    <audio id="audio-output" autoplay style="display: none;"></audio>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html> 

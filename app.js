@@ -1,354 +1,488 @@
-// PeerJS + UI logic for roomMic - Multi-participant support
-let peer = null;
-let localStream = null;
-let isHost = false;
-let currentRoom = null;
-let connections = new Map(); // Map of peer connections
-let audioContext = null;
-let audioDestination = null;
-let localAudioSource = null;
-let gainNodes = new Map(); // For volume control
+/**
+ * roomMic 2.0 - Centralized Audio Streaming
+ * All audio streams to the host's speakers only
+ */
 
-// UI Elements
-const screens = {
-    main: document.getElementById('main-menu'),
-    create: document.getElementById('create-screen'),
-    join: document.getElementById('join-screen'),
-    broadcast: document.getElementById('broadcast-screen')
+// Application State
+const AppState = {
+    peer: null,
+    localStream: null,
+    audioContext: null,
+    audioDestination: null,
+    connections: new Map(),
+    gainNodes: new Map(),
+    currentRoom: null,
+    isHost: false,
+    isMicActive: true,
+    participantCount: 0
 };
-const statusEl = document.getElementById('status');
-const remoteAudio = document.getElementById('remote-audio');
 
-function showScreen(name) {
-    Object.values(screens).forEach(s => s.classList.add('hidden'));
-    screens[name].classList.remove('hidden');
-}
+// DOM Elements
+const Elements = {
+    // Screens
+    mainScreen: document.getElementById('main-screen'),
+    createScreen: document.getElementById('create-screen'),
+    joinScreen: document.getElementById('join-screen'),
+    sessionScreen: document.getElementById('session-screen'),
+    
+    // Buttons
+    btnCreateRoom: document.getElementById('btn-create-room'),
+    btnJoinRoom: document.getElementById('btn-join-room'),
+    btnBackCreate: document.getElementById('btn-back-create'),
+    btnBackJoin: document.getElementById('btn-back-join'),
+    btnCopyCode: document.getElementById('btn-copy-code'),
+    btnStartHosting: document.getElementById('btn-start-hosting'),
+    btnJoinConfirm: document.getElementById('btn-join-confirm'),
+    btnToggleMic: document.getElementById('btn-toggle-mic'),
+    btnLeaveRoom: document.getElementById('btn-leave-room'),
+    
+    // Display Elements
+    roomCode: document.getElementById('room-code'),
+    joinCodeInput: document.getElementById('join-code-input'),
+    sessionTitle: document.getElementById('session-title'),
+    participantCount: document.getElementById('participant-count'),
+    connectionStatus: document.getElementById('connection-status'),
+    currentRoomCode: document.getElementById('current-room-code'),
+    userRole: document.getElementById('user-role'),
+    volumeBars: document.querySelectorAll('.volume-bar'),
+    
+    // Audio & Toast
+    audioOutput: document.getElementById('audio-output'),
+    statusToast: document.getElementById('status-toast'),
+    statusMessage: document.getElementById('status-message')
+};
 
-function setStatus(msg) {
-    statusEl.textContent = msg;
-    console.log('[STATUS]', msg);
-}
+// Utility Functions
+const Utils = {
+    generateRoomCode() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
+    },
 
-function randomCode() {
-    // Return a string of 4 random digits
-    return Math.floor(1000 + Math.random() * 9000).toString();
-}
+    showScreen(screenName) {
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+        Elements[screenName + 'Screen'].classList.add('active');
+    },
 
-// Audio mixing setup - ULTRA LOW LATENCY VERSION
-function initAudioContext() {
-    if (audioContext) {
-        audioContext.close();
+    showToast(message, duration = 3000) {
+        Elements.statusMessage.textContent = message;
+        Elements.statusToast.classList.add('show');
+        
+        setTimeout(() => {
+            Elements.statusToast.classList.remove('show');
+        }, duration);
+    },
+
+    updateConnectionStatus(status, className = '') {
+        Elements.connectionStatus.textContent = status;
+        Elements.connectionStatus.className = 'status ' + className;
+    },
+
+    updateParticipantCount(count) {
+        AppState.participantCount = count;
+        Elements.participantCount.textContent = `משתתפים: ${count}`;
+    },
+
+    updateVolumeIndicator(level) {
+        const activeCount = Math.floor((level / 100) * Elements.volumeBars.length);
+        Elements.volumeBars.forEach((bar, index) => {
+            bar.classList.toggle('active', index < activeCount);
+        });
+    },
+
+    copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            Utils.showToast('הקוד הועתק!');
+        }).catch(() => {
+            Utils.showToast('לא ניתן להעתיק', 2000);
+        });
     }
-    
-    // Ultra-low latency audio context
-    audioContext = new (window.AudioContext || window.webkitAudioContext)({
-        latencyHint: 0.003,        // 3ms target latency
-        sampleRate: 96000,         // Higher sample rate for better precision
-        bufferSize: 64             // Smallest possible buffer
-    });
-    
-    audioDestination = audioContext.createMediaStreamDestination();
-    
-    if (localStream && isHost) {
-        localAudioSource = audioContext.createMediaStreamSource(localStream);
-        const localGain = audioContext.createGain();
-        localGain.gain.value = 0.7; // Slightly lower volume for self
-        localAudioSource.connect(localGain);
-        localGain.connect(audioDestination);
+};
+
+// Audio Management
+const AudioManager = {
+    async initializeAudioContext() {
+        if (AppState.audioContext) {
+            await AppState.audioContext.close();
+        }
+
+        AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            latencyHint: 0.003,
+            sampleRate: 96000
+        });
+
+        AppState.audioDestination = AppState.audioContext.createMediaStreamDestination();
+        Elements.audioOutput.srcObject = AppState.audioDestination.stream;
+        
+        try {
+            await Elements.audioOutput.play();
+        } catch (e) {
+            console.warn('Auto-play prevented, user interaction required');
+        }
+    },
+
+    async requestMicrophone() {
+        try {
+            AppState.localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    latency: 0.003,
+                    sampleRate: 96000,
+                    channelCount: 1
+                }
+            });
+            return true;
+        } catch (error) {
+            console.error('Microphone access denied:', error);
+            Utils.showToast('לא ניתן לגשת למיקרופון');
+            return false;
+        }
+    },
+
+    addLocalAudioToMix() {
+        if (!AppState.audioContext || !AppState.localStream || !AppState.isHost) return;
+
+        const source = AppState.audioContext.createMediaStreamSource(AppState.localStream);
+        const gainNode = AppState.audioContext.createGain();
+        gainNode.gain.value = 0.7; // Host hears themselves at lower volume
+        
+        source.connect(gainNode);
+        gainNode.connect(AppState.audioDestination);
+        
+        AppState.gainNodes.set('local', { source, gainNode });
+    },
+
+    addRemoteAudioToMix(peerId, stream) {
+        if (!AppState.audioContext || !AppState.isHost) return;
+
+        const source = AppState.audioContext.createMediaStreamSource(stream);
+        const gainNode = AppState.audioContext.createGain();
+        gainNode.gain.value = 1.0;
+        
+        source.connect(gainNode);
+        gainNode.connect(AppState.audioDestination);
+        
+        AppState.gainNodes.set(peerId, { source, gainNode });
+    },
+
+    removeAudioFromMix(peerId) {
+        const audioNodes = AppState.gainNodes.get(peerId);
+        if (audioNodes) {
+            audioNodes.source.disconnect();
+            audioNodes.gainNode.disconnect();
+            AppState.gainNodes.delete(peerId);
+        }
+    },
+
+    toggleMicrophone() {
+        if (!AppState.localStream) return;
+
+        const audioTrack = AppState.localStream.getAudioTracks()[0];
+        audioTrack.enabled = !audioTrack.enabled;
+        AppState.isMicActive = audioTrack.enabled;
+
+        const btn = Elements.btnToggleMic;
+        const icon = btn.querySelector('.btn-icon');
+        const text = btn.querySelector('.btn-text');
+
+        if (AppState.isMicActive) {
+            btn.classList.add('active');
+            icon.textContent = '🎤';
+            text.textContent = 'מיקרופון פעיל';
+            Utils.showToast('המיקרופון הופעל');
+        } else {
+            btn.classList.remove('active');
+            icon.textContent = '🔇';
+            text.textContent = 'מיקרופון מושתק';
+            Utils.showToast('המיקרופון הושתק');
+        }
+    },
+
+    cleanup() {
+        // Stop all audio tracks
+        if (AppState.localStream) {
+            AppState.localStream.getTracks().forEach(track => track.stop());
+            AppState.localStream = null;
+        }
+
+        // Disconnect all audio nodes
+        AppState.gainNodes.forEach((nodes, peerId) => {
+            AudioManager.removeAudioFromMix(peerId);
+        });
+
+        // Close audio context
+        if (AppState.audioContext) {
+            AppState.audioContext.close();
+            AppState.audioContext = null;
+        }
+
+        // Clear audio output
+        Elements.audioOutput.srcObject = null;
     }
-    
-    remoteAudio.srcObject = audioDestination.stream;
-    remoteAudio.play().catch(e => console.log('Auto-play prevented:', e));
-}
-
-function addRemoteStream(peerId, stream) {
-    if (!audioContext) initAudioContext();
-    
-    const source = audioContext.createMediaStreamSource(stream);
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = 1.0;
-    
-    source.connect(gainNode);
-    gainNode.connect(audioDestination);
-    
-    gainNodes.set(peerId, { source, gainNode });
-    
-    setStatus(`משתתף חדש הצטרף (${connections.size} משתתפים)`);
-}
-
-function removeRemoteStream(peerId) {
-    const audioNodes = gainNodes.get(peerId);
-    if (audioNodes) {
-        audioNodes.source.disconnect();
-        audioNodes.gainNode.disconnect();
-        gainNodes.delete(peerId);
-    }
-    
-    setStatus(`משתתף עזב (${connections.size} משתתפים)`);
-}
-
-// Main menu events
-document.getElementById('create-room').onclick = () => {
-    const code = randomCode();
-    document.getElementById('room-code').textContent = code;
-    currentRoom = code;
-    isHost = true;
-    showScreen('create');
 };
 
-document.getElementById('join-room').onclick = () => {
-    showScreen('join');
-};
-
-document.getElementById('back-main-1').onclick = document.getElementById('back-main-2').onclick = () => {
-    showScreen('main');
-    cleanup();
-};
-
-document.getElementById('copy-code').onclick = () => {
-    const code = document.getElementById('room-code').textContent;
-    navigator.clipboard.writeText(code).then(() => alert('הקוד הועתק!'));
-};
-
-document.getElementById('start-broadcast').onclick = async () => {
-    await startBroadcast(currentRoom, true);
-};
-
-document.getElementById('join-confirm').onclick = async () => {
-    const code = document.getElementById('join-code').value.trim().toUpperCase();
-    if (!code) return alert('יש להזין קוד חדר');
-    currentRoom = code;
-    isHost = false;
-    await startBroadcast(currentRoom, false);
-};
-
-document.getElementById('toggle-mic').onclick = () => {
-    if (!localStream) return;
-    const btn = document.getElementById('toggle-mic');
-    const enabled = localStream.getAudioTracks()[0].enabled;
-    localStream.getAudioTracks()[0].enabled = !enabled;
-    btn.textContent = enabled ? 'הפעל מיקרופון' : 'השתק מיקרופון';
-    setStatus(enabled ? 'המיקרופון מושתק' : 'המיקרופון פעיל');
-};
-
-document.getElementById('leave').onclick = () => {
-    cleanup();
-    showScreen('main');
-};
-
-// --- Enhanced PeerJS Logic for Multiple Participants ---
-
-async function startBroadcast(roomCode, host) {
-    showScreen('broadcast');
-    setStatus('מבקש הרשאה למיקרופון...');
-    
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: false,    // Disabled for minimal processing
-                noiseSuppression: false,    // Disabled for minimal processing
-                autoGainControl: false,     // Disabled for minimal processing
-                latency: 0.003,             // 3ms ultra-low latency
-                googLatency: 0.003,         // Chrome-specific ultra-low
-                googAutoGainControl: false,
-                googEchoCancellation: false,
-                googNoiseSuppression: false,
-                sampleRate: 96000,          // Higher precision
-                sampleSize: 16,             // Standard bit depth
-                channelCount: 1,            // Mono for speed
-                volume: 1.0,
-                googHighpassFilter: false,  // Disable extra processing
-                googTypingNoiseDetection: false
+// WebRTC Connection Management
+const ConnectionManager = {
+    async startAsHost(roomCode) {
+        AppState.peer = new Peer(roomCode, {
+            debug: 1,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
             }
         });
-        setStatus('הרשאה התקבלה, פותח חיבור...');
-    } catch (e) {
-        setStatus('שגיאה בגישה למיקרופון');
-        alert('לא ניתן לגשת למיקרופון. אנא בדוק את הגדרות הדפדפן.');
-        return;
-    }
 
-    // Clean up previous connections
-    cleanup();
-    
-    if (host) {
-        await startAsHost(roomCode);
-    } else {
-        await startAsParticipant(roomCode);
-    }
-}
+        AppState.peer.on('open', () => {
+            Utils.updateConnectionStatus('ממתין למשתתפים...', 'connecting');
+            AudioManager.initializeAudioContext();
+            AudioManager.addLocalAudioToMix();
+        });
 
-async function startAsHost(roomCode) {
-    peer = new Peer(roomCode, {
-        debug: 1,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ],
-            sdpSemantics: 'unified-plan',
-            maxBandwidth: 320000,
-            minBandwidth: 128000,
-            codec: 'opus',
-            frameDuration: 10,          // 10ms frames instead of 20ms
-            jitterBufferMinDelayMs: 0,  // No jitter buffer delay
-            jitterBufferMaxDelayMs: 10, // Max 10ms jitter buffer
-            googCpuOveruseDetection: false,
-            googSuspendBelowMinBitrate: false
+        AppState.peer.on('call', (incomingCall) => {
+            const peerId = incomingCall.peer;
+            Utils.showToast(`משתתף מתחבר: ${peerId.substring(0, 8)}...`);
+            
+            // Answer with local stream
+            incomingCall.answer(AppState.localStream);
+            AppState.connections.set(peerId, incomingCall);
+
+            incomingCall.on('stream', (remoteStream) => {
+                AudioManager.addRemoteAudioToMix(peerId, remoteStream);
+                Utils.updateParticipantCount(AppState.connections.size);
+                Utils.updateConnectionStatus('משדר ומאזין', 'connected');
+                Utils.showToast(`משתתף הצטרף! (${AppState.connections.size} משתתפים)`);
+            });
+
+            incomingCall.on('close', () => {
+                ConnectionManager.handleParticipantDisconnection(peerId);
+            });
+
+            incomingCall.on('error', (error) => {
+                console.error('Call error:', error);
+                ConnectionManager.handleParticipantDisconnection(peerId);
+            });
+        });
+
+        AppState.peer.on('error', (error) => {
+            console.error('Peer error:', error);
+            Utils.updateConnectionStatus('שגיאת חיבור', 'error');
+            Utils.showToast('שגיאה ביצירת החדר');
+        });
+    },
+
+    async startAsParticipant(roomCode) {
+        AppState.peer = new Peer(undefined, {
+            debug: 1,
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        });
+
+        AppState.peer.on('open', () => {
+            Utils.updateConnectionStatus('מתחבר למנהל...', 'connecting');
+            
+            const call = AppState.peer.call(roomCode, AppState.localStream);
+            if (!call) {
+                Utils.updateConnectionStatus('לא נמצא מנהל', 'error');
+                Utils.showToast('לא נמצא חדר עם קוד זה');
+                return;
+            }
+
+            AppState.connections.set(roomCode, call);
+
+            call.on('stream', (remoteStream) => {
+                // Participants don't hear anything - audio goes to host only
+                Utils.updateConnectionStatus('מחובר למנהל', 'connected');
+                Utils.showToast('מחובר בהצלחה! המנהל שומע אותך');
+            });
+
+            call.on('close', () => {
+                Utils.updateConnectionStatus('החיבור נסגר', 'error');
+                Utils.showToast('החיבור למנהל נסגר');
+            });
+
+            call.on('error', (error) => {
+                console.error('Call error:', error);
+                Utils.updateConnectionStatus('שגיאת חיבור', 'error');
+                Utils.showToast('שגיאה בחיבור למנהל');
+            });
+        });
+
+        AppState.peer.on('error', (error) => {
+            console.error('Peer error:', error);
+            if (error.type === 'peer-unavailable') {
+                Utils.updateConnectionStatus('המנהל לא זמין', 'error');
+                Utils.showToast('לא נמצא חדר עם קוד זה');
+            } else {
+                Utils.updateConnectionStatus('שגיאת חיבור', 'error');
+                Utils.showToast('שגיאה בהתחברות');
+            }
+        });
+    },
+
+    handleParticipantDisconnection(peerId) {
+        AudioManager.removeAudioFromMix(peerId);
+        AppState.connections.delete(peerId);
+        Utils.updateParticipantCount(AppState.connections.size);
+        Utils.showToast(`משתתף עזב (${AppState.connections.size} משתתפים)`);
+        
+        if (AppState.connections.size === 0) {
+            Utils.updateConnectionStatus('ממתין למשתתפים...', 'connecting');
         }
-    });
+    },
 
-    peer.on('open', id => {
-        setStatus('ממתין למשתתפים...');
-        initAudioContext(); // Initialize audio mixing
-    });
-
-    peer.on('call', incomingCall => {
-        const peerId = incomingCall.peer;
-        setStatus(`משתתף מתחבר: ${peerId}`);
-        
-        // Answer the call with our local stream
-        incomingCall.answer(localStream);
-        
-        // Store the connection
-        connections.set(peerId, incomingCall);
-        
-        incomingCall.on('stream', stream => {
-            addRemoteStream(peerId, stream);
+    cleanup() {
+        // Close all connections
+        AppState.connections.forEach((connection) => {
+            connection.close();
         });
-        
-        incomingCall.on('close', () => {
-            removeRemoteStream(peerId);
-            connections.delete(peerId);
-        });
-        
-        incomingCall.on('error', err => {
-            console.error('Call error:', err);
-            removeRemoteStream(peerId);
-            connections.delete(peerId);
-        });
-    });
+        AppState.connections.clear();
 
-    peer.on('error', err => {
-        setStatus('שגיאה: ' + err.type);
-        console.error('Peer error:', err);
-    });
-
-    peer.on('disconnected', () => {
-        setStatus('החיבור נותק - מנסה להתחבר מחדש...');
-        peer.reconnect();
-    });
-}
-
-async function startAsParticipant(roomCode) {
-    peer = new Peer(undefined, {
-        debug: 1,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ],
-            sdpSemantics: 'unified-plan',
-            // Ultra-low latency WebRTC settings
-            maxBandwidth: 320000,
-            minBandwidth: 128000,
-            codec: 'opus',
-            frameDuration: 10,          // 10ms frames instead of 20ms
-            jitterBufferMinDelayMs: 0,  // No jitter buffer delay
-            jitterBufferMaxDelayMs: 10, // Max 10ms jitter buffer
-            googCpuOveruseDetection: false,
-            googSuspendBelowMinBitrate: false
+        // Destroy peer
+        if (AppState.peer) {
+            AppState.peer.destroy();
+            AppState.peer = null;
         }
-    });
 
-    peer.on('open', id => {
-        setStatus('מתחבר למנהל...');
+        // Reset state
+        AppState.currentRoom = null;
+        AppState.isHost = false;
+        AppState.participantCount = 0;
+    }
+};
+
+// Event Handlers
+const EventHandlers = {
+    // Navigation
+    createRoom() {
+        AppState.currentRoom = Utils.generateRoomCode();
+        AppState.isHost = true;
+        Elements.roomCode.textContent = AppState.currentRoom;
+        Utils.showScreen('create');
+    },
+
+    joinRoom() {
+        Elements.joinCodeInput.value = '';
+        Utils.showScreen('join');
+    },
+
+    backToMain() {
+        ConnectionManager.cleanup();
+        AudioManager.cleanup();
+        Utils.showScreen('main');
+    },
+
+    copyRoomCode() {
+        Utils.copyToClipboard(AppState.currentRoom);
+    },
+
+    // Session Management
+    async startHosting() {
+        const micGranted = await AudioManager.requestMicrophone();
+        if (!micGranted) return;
+
+        Elements.sessionTitle.textContent = '🏠 מנהל החדר';
+        Elements.currentRoomCode.textContent = AppState.currentRoom;
+        Elements.userRole.textContent = 'מנהל';
         
-        // Call the host
-        const call = peer.call(roomCode, localStream);
+        Utils.showScreen('session');
+        Utils.updateConnectionStatus('מאתחל...', 'connecting');
         
-        if (!call) {
-            setStatus('לא נמצא מנהל עם קוד זה');
+        await ConnectionManager.startAsHost(AppState.currentRoom);
+    },
+
+    async joinConfirm() {
+        const roomCode = Elements.joinCodeInput.value.trim();
+        if (!roomCode || roomCode.length !== 4) {
+            Utils.showToast('יש להזין קוד בן 4 ספרות');
             return;
         }
+
+        const micGranted = await AudioManager.requestMicrophone();
+        if (!micGranted) return;
+
+        AppState.currentRoom = roomCode;
+        AppState.isHost = false;
         
-        connections.set(roomCode, call);
+        Elements.sessionTitle.textContent = '🎧 משתתף';
+        Elements.currentRoomCode.textContent = roomCode;
+        Elements.userRole.textContent = 'משתתף';
         
-        call.on('stream', stream => {
-            // Participants hear only the mixed audio from host
-            remoteAudio.srcObject = stream;
-            remoteAudio.play().catch(e => console.log('Auto-play prevented:', e));
-            setStatus('מחובר ושומע');
-        });
+        Utils.showScreen('session');
+        Utils.updateConnectionStatus('מתחבר...', 'connecting');
         
-        call.on('close', () => {
-            setStatus('החיבור למנהל נסגר');
-        });
-        
-        call.on('error', err => {
-            setStatus('שגיאה בחיבור למנהל: ' + err);
-            console.error('Call error:', err);
-        });
+        await ConnectionManager.startAsParticipant(roomCode);
+    },
+
+    toggleMicrophone() {
+        AudioManager.toggleMicrophone();
+    },
+
+    leaveRoom() {
+        ConnectionManager.cleanup();
+        AudioManager.cleanup();
+        Utils.showScreen('main');
+        Utils.showToast('עזבת את החדר');
+    }
+};
+
+// Initialize Application
+function initializeApp() {
+    console.log('roomMic 2.0 - Starting application...');
+    
+    // Ensure only main screen is visible
+    document.querySelectorAll('.screen').forEach(screen => {
+        screen.classList.remove('active');
+    });
+    Elements.mainScreen.classList.add('active');
+    
+    // Bind event listeners
+    Elements.btnCreateRoom.addEventListener('click', EventHandlers.createRoom);
+    Elements.btnJoinRoom.addEventListener('click', EventHandlers.joinRoom);
+    Elements.btnBackCreate.addEventListener('click', EventHandlers.backToMain);
+    Elements.btnBackJoin.addEventListener('click', EventHandlers.backToMain);
+    Elements.btnCopyCode.addEventListener('click', EventHandlers.copyRoomCode);
+    Elements.btnStartHosting.addEventListener('click', EventHandlers.startHosting);
+    Elements.btnJoinConfirm.addEventListener('click', EventHandlers.joinConfirm);
+    Elements.btnToggleMic.addEventListener('click', EventHandlers.toggleMicrophone);
+    Elements.btnLeaveRoom.addEventListener('click', EventHandlers.leaveRoom);
+
+    // Numeric input only for room code
+    Elements.joinCodeInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D/g, '');
     });
 
-    peer.on('error', err => {
-        setStatus('שגיאה: ' + err.type);
-        console.error('Peer error:', err);
-        
-        if (err.type === 'peer-unavailable') {
-            setStatus('המנהל לא זמין - אנא בדוק את הקוד');
+    // Enter key for join
+    Elements.joinCodeInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            EventHandlers.joinConfirm();
         }
     });
-}
 
-function cleanup() {
-    // Close all connections
-    connections.forEach((connection, peerId) => {
-        connection.close();
-        removeRemoteStream(peerId);
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        ConnectionManager.cleanup();
+        AudioManager.cleanup();
     });
-    connections.clear();
-    
-    // Clean up peer
-    if (peer) {
-        peer.destroy();
-        peer = null;
-    }
-    
-    // Clean up audio context
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
-    
-    // Stop local stream
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    
-    // Clean up audio elements
-    if (remoteAudio) {
-        remoteAudio.srcObject = null;
-        remoteAudio.pause();
-    }
-    
-    // Reset variables
-    localAudioSource = null;
-    audioDestination = null;
-    gainNodes.clear();
-    
-    setStatus('מנותק');
+
+    // Auto-resume audio context on user interaction
+    document.addEventListener('click', () => {
+        if (AppState.audioContext && AppState.audioContext.state === 'suspended') {
+            AppState.audioContext.resume();
+        }
+    }, { once: true });
+
+    console.log('roomMic 2.0 - Application initialized successfully!');
+    Utils.showToast('roomMic 2.0 מוכן לשימוש!');
 }
 
-// Handle page unload
-window.addEventListener('beforeunload', cleanup);
-
-// Auto-resume audio context on user interaction
-document.addEventListener('click', () => {
-    if (audioContext && audioContext.state === 'suspended') {
-        audioContext.resume();
-    }
-}, { once: true }); 
+// Start the application
+document.addEventListener('DOMContentLoaded', initializeApp); 
