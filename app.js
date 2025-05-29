@@ -30,7 +30,8 @@ function setStatus(msg) {
 }
 
 function randomCode() {
-    return Math.random().toString(36).substr(2, 6).toUpperCase();
+    // Return a string of 4 random digits
+    return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
 // Audio mixing setup - ULTRA LOW LATENCY VERSION
