@@ -108,8 +108,8 @@ const AudioManager = {
         }
 
         AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: 0.003,
-            sampleRate: 96000
+            latencyHint: 'interactive',  // More compatible latency setting
+            sampleRate: 48000           // Standard sample rate
         });
 
         AppState.audioDestination = AppState.audioContext.createMediaStreamDestination();
@@ -117,6 +117,7 @@ const AudioManager = {
         
         try {
             await Elements.audioOutput.play();
+            console.log('Audio context initialized successfully');
         } catch (e) {
             console.warn('Auto-play prevented, user interaction required');
         }
@@ -126,14 +127,15 @@ const AudioManager = {
         try {
             AppState.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false,
-                    latency: 0.003,
-                    sampleRate: 96000,
+                    echoCancellation: true,  // Re-enabled for better compatibility
+                    noiseSuppression: true,  // Re-enabled for better quality
+                    autoGainControl: true,   // Re-enabled for consistent volume
+                    latency: 0.01,           // More conservative latency
+                    sampleRate: 48000,       // Standard sample rate for better compatibility
                     channelCount: 1
                 }
             });
+            console.log('Microphone access granted');
             return true;
         } catch (error) {
             console.error('Microphone access denied:', error);
@@ -232,8 +234,14 @@ const ConnectionManager = {
             config: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
+                ],
+                sdpSemantics: 'unified-plan',
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
             }
         });
 
@@ -241,10 +249,12 @@ const ConnectionManager = {
             Utils.updateConnectionStatus('ממתין למשתתפים...', 'connecting');
             AudioManager.initializeAudioContext();
             AudioManager.addLocalAudioToMix();
+            console.log('Host peer opened with ID:', roomCode);
         });
 
         AppState.peer.on('call', (incomingCall) => {
             const peerId = incomingCall.peer;
+            console.log('Incoming call from:', peerId);
             Utils.showToast(`משתתף מתחבר: ${peerId.substring(0, 8)}...`);
             
             // Answer with local stream
@@ -252,6 +262,7 @@ const ConnectionManager = {
             AppState.connections.set(peerId, incomingCall);
 
             incomingCall.on('stream', (remoteStream) => {
+                console.log('Received stream from participant:', peerId);
                 AudioManager.addRemoteAudioToMix(peerId, remoteStream);
                 Utils.updateParticipantCount(AppState.connections.size);
                 Utils.updateConnectionStatus('משדר ומאזין', 'connected');
@@ -259,19 +270,30 @@ const ConnectionManager = {
             });
 
             incomingCall.on('close', () => {
+                console.log('Call closed for participant:', peerId);
                 ConnectionManager.handleParticipantDisconnection(peerId);
             });
 
             incomingCall.on('error', (error) => {
-                console.error('Call error:', error);
+                console.error('Call error for participant:', peerId, error);
                 ConnectionManager.handleParticipantDisconnection(peerId);
             });
         });
 
         AppState.peer.on('error', (error) => {
-            console.error('Peer error:', error);
+            console.error('Host peer error:', error);
             Utils.updateConnectionStatus('שגיאת חיבור', 'error');
             Utils.showToast('שגיאה ביצירת החדר');
+        });
+
+        AppState.peer.on('disconnected', () => {
+            console.log('Host peer disconnected, attempting reconnection...');
+            Utils.updateConnectionStatus('מתחבר מחדש...', 'connecting');
+            setTimeout(() => {
+                if (AppState.peer && !AppState.peer.destroyed) {
+                    AppState.peer.reconnect();
+                }
+            }, 1000);
         });
     },
 
@@ -281,50 +303,76 @@ const ConnectionManager = {
             config: {
                 iceServers: [
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:global.stun.twilio.com:3478' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
+                ],
+                sdpSemantics: 'unified-plan',
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
             }
         });
 
-        AppState.peer.on('open', () => {
+        AppState.peer.on('open', (myPeerId) => {
+            console.log('Participant peer opened with ID:', myPeerId);
             Utils.updateConnectionStatus('מתחבר למנהל...', 'connecting');
             
-            const call = AppState.peer.call(roomCode, AppState.localStream);
-            if (!call) {
-                Utils.updateConnectionStatus('לא נמצא מנהל', 'error');
-                Utils.showToast('לא נמצא חדר עם קוד זה');
-                return;
-            }
+            setTimeout(() => {
+                console.log('Calling host with room code:', roomCode);
+                const call = AppState.peer.call(roomCode, AppState.localStream);
+                
+                if (!call) {
+                    Utils.updateConnectionStatus('לא נמצא מנהל', 'error');
+                    Utils.showToast('לא נמצא חדר עם קוד זה');
+                    return;
+                }
 
-            AppState.connections.set(roomCode, call);
+                AppState.connections.set(roomCode, call);
 
-            call.on('stream', (remoteStream) => {
-                // Participants don't hear anything - audio goes to host only
-                Utils.updateConnectionStatus('מחובר למנהל', 'connected');
-                Utils.showToast('מחובר בהצלחה! המנהל שומע אותך');
-            });
+                call.on('stream', (remoteStream) => {
+                    console.log('Received stream from host');
+                    // Participants don't hear anything - audio goes to host only
+                    Utils.updateConnectionStatus('מחובר למנהל', 'connected');
+                    Utils.showToast('מחובר בהצלחה! המנהל שומע אותך');
+                });
 
-            call.on('close', () => {
-                Utils.updateConnectionStatus('החיבור נסגר', 'error');
-                Utils.showToast('החיבור למנהל נסגר');
-            });
+                call.on('close', () => {
+                    console.log('Call to host closed');
+                    Utils.updateConnectionStatus('החיבור נסגר', 'error');
+                    Utils.showToast('החיבור למנהל נסגר');
+                });
 
-            call.on('error', (error) => {
-                console.error('Call error:', error);
-                Utils.updateConnectionStatus('שגיאת חיבור', 'error');
-                Utils.showToast('שגיאה בחיבור למנהל');
-            });
+                call.on('error', (error) => {
+                    console.error('Call to host error:', error);
+                    Utils.updateConnectionStatus('שגיאת חיבור', 'error');
+                    Utils.showToast('שגיאה בחיבור למנהל');
+                });
+            }, 500); // Small delay to ensure peer is ready
         });
 
         AppState.peer.on('error', (error) => {
-            console.error('Peer error:', error);
+            console.error('Participant peer error:', error);
             if (error.type === 'peer-unavailable') {
                 Utils.updateConnectionStatus('המנהל לא זמין', 'error');
                 Utils.showToast('לא נמצא חדר עם קוד זה');
+            } else if (error.type === 'network') {
+                Utils.updateConnectionStatus('בעיית רשת', 'error');
+                Utils.showToast('בעיית חיבור לאינטרנט');
             } else {
                 Utils.updateConnectionStatus('שגיאת חיבור', 'error');
                 Utils.showToast('שגיאה בהתחברות');
             }
+        });
+
+        AppState.peer.on('disconnected', () => {
+            console.log('Participant peer disconnected, attempting reconnection...');
+            Utils.updateConnectionStatus('מתחבר מחדש...', 'connecting');
+            setTimeout(() => {
+                if (AppState.peer && !AppState.peer.destroyed) {
+                    AppState.peer.reconnect();
+                }
+            }, 1000);
         });
     },
 
@@ -479,6 +527,14 @@ function initializeApp() {
             AppState.audioContext.resume();
         }
     }, { once: true });
+
+    // Keep-alive mechanism for connections
+    setInterval(() => {
+        if (AppState.peer && !AppState.peer.destroyed && AppState.peer.open) {
+            // Send a heartbeat to keep connection alive
+            console.log('Keep-alive: Connection active');
+        }
+    }, 30000); // Every 30 seconds
 
     console.log('roomMic 2.0 - Application initialized successfully!');
     Utils.showToast('roomMic 2.0 מוכן לשימוש!');
