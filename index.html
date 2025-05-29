@@ -96,6 +96,11 @@
                     <span class="btn-text">מיקרופון פעיל</span>
                 </button>
                 
+                <button id="btn-test-audio" class="btn btn-outline">
+                    <span class="btn-icon">🔊</span>
+                    בדוק אודיו
+                </button>
+                
                 <div class="volume-indicator">
                     <div class="volume-bars">
                         <div class="volume-bar"></div>
@@ -131,8 +136,8 @@
         <span id="status-message">מוכן</span>
     </div>
 
-    <!-- Hidden Audio Element -->
-    <audio id="audio-output" autoplay style="display: none;"></audio>
+    <!-- Audio Element for Output -->
+    <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px; display: none;"></audio>
 
     <!-- Scripts -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>

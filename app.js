@@ -35,6 +35,7 @@ const Elements = {
     btnJoinConfirm: document.getElementById('btn-join-confirm'),
     btnToggleMic: document.getElementById('btn-toggle-mic'),
     btnLeaveRoom: document.getElementById('btn-leave-room'),
+    btnTestAudio: document.getElementById('btn-test-audio'),
     
     // Display Elements
     roomCode: document.getElementById('room-code'),
@@ -107,19 +108,47 @@ const AudioManager = {
             await AppState.audioContext.close();
         }
 
-        AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: 'interactive',  // More compatible latency setting
-            sampleRate: 48000           // Standard sample rate
-        });
-
-        AppState.audioDestination = AppState.audioContext.createMediaStreamDestination();
-        Elements.audioOutput.srcObject = AppState.audioDestination.stream;
-        
         try {
-            await Elements.audioOutput.play();
+            AppState.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                latencyHint: 'interactive',
+                sampleRate: 48000
+            });
+
+            // Resume audio context if suspended
+            if (AppState.audioContext.state === 'suspended') {
+                await AppState.audioContext.resume();
+            }
+
+            AppState.audioDestination = AppState.audioContext.createMediaStreamDestination();
+            
+            // Setup audio output
+            Elements.audioOutput.srcObject = AppState.audioDestination.stream;
+            Elements.audioOutput.volume = 1.0;
+            Elements.audioOutput.muted = false;
+            
+            // Try to play audio (will fail if user hasn't interacted)
+            try {
+                await Elements.audioOutput.play();
+                console.log('Audio output started successfully');
+            } catch (e) {
+                console.warn('Auto-play prevented, will try again after user interaction');
+                // Add a one-time click listener to enable audio
+                document.addEventListener('click', async () => {
+                    if (Elements.audioOutput.paused) {
+                        try {
+                            await Elements.audioOutput.play();
+                            console.log('Audio output started after user interaction');
+                        } catch (err) {
+                            console.error('Failed to start audio:', err);
+                        }
+                    }
+                }, { once: true });
+            }
+            
             console.log('Audio context initialized successfully');
-        } catch (e) {
-            console.warn('Auto-play prevented, user interaction required');
+        } catch (error) {
+            console.error('Failed to initialize audio context:', error);
+            Utils.showToast('שגיאה באתחול מערכת האודיו');
         }
     },
 
@@ -145,29 +174,81 @@ const AudioManager = {
     },
 
     addLocalAudioToMix() {
-        if (!AppState.audioContext || !AppState.localStream || !AppState.isHost) return;
+        if (!AppState.audioContext || !AppState.localStream || !AppState.isHost) {
+            console.warn('Cannot add local audio to mix - missing requirements');
+            return;
+        }
 
-        const source = AppState.audioContext.createMediaStreamSource(AppState.localStream);
-        const gainNode = AppState.audioContext.createGain();
-        gainNode.gain.value = 0.7; // Host hears themselves at lower volume
-        
-        source.connect(gainNode);
-        gainNode.connect(AppState.audioDestination);
-        
-        AppState.gainNodes.set('local', { source, gainNode });
+        try {
+            const source = AppState.audioContext.createMediaStreamSource(AppState.localStream);
+            const gainNode = AppState.audioContext.createGain();
+            gainNode.gain.value = 0.7; // Host hears themselves at lower volume
+            
+            source.connect(gainNode);
+            gainNode.connect(AppState.audioDestination);
+            
+            AppState.gainNodes.set('local', { source, gainNode });
+            console.log('Local audio added to mix successfully');
+            
+            // Test if audio is flowing
+            const analyser = AppState.audioContext.createAnalyser();
+            source.connect(analyser);
+            
+            const checkAudioLevel = () => {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                
+                if (average > 0) {
+                    console.log('Audio detected from local microphone, level:', average);
+                }
+            };
+            
+            // Check audio level every 2 seconds for debugging
+            setInterval(checkAudioLevel, 2000);
+            
+        } catch (error) {
+            console.error('Error adding local audio to mix:', error);
+        }
     },
 
     addRemoteAudioToMix(peerId, stream) {
-        if (!AppState.audioContext || !AppState.isHost) return;
+        if (!AppState.audioContext || !AppState.isHost) {
+            console.warn('Cannot add remote audio to mix - not host or no audio context');
+            return;
+        }
 
-        const source = AppState.audioContext.createMediaStreamSource(stream);
-        const gainNode = AppState.audioContext.createGain();
-        gainNode.gain.value = 1.0;
-        
-        source.connect(gainNode);
-        gainNode.connect(AppState.audioDestination);
-        
-        AppState.gainNodes.set(peerId, { source, gainNode });
+        try {
+            const source = AppState.audioContext.createMediaStreamSource(stream);
+            const gainNode = AppState.audioContext.createGain();
+            gainNode.gain.value = 1.0;
+            
+            source.connect(gainNode);
+            gainNode.connect(AppState.audioDestination);
+            
+            AppState.gainNodes.set(peerId, { source, gainNode });
+            console.log(`Remote audio from ${peerId} added to mix successfully`);
+            
+            // Test if remote audio is flowing
+            const analyser = AppState.audioContext.createAnalyser();
+            source.connect(analyser);
+            
+            const checkRemoteAudioLevel = () => {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                
+                if (average > 0) {
+                    console.log(`Audio detected from ${peerId}, level:`, average);
+                }
+            };
+            
+            // Check remote audio level every 2 seconds for debugging
+            setInterval(checkRemoteAudioLevel, 2000);
+            
+        } catch (error) {
+            console.error(`Error adding remote audio from ${peerId} to mix:`, error);
+        }
     },
 
     removeAudioFromMix(peerId) {
@@ -479,6 +560,79 @@ const EventHandlers = {
         AudioManager.cleanup();
         Utils.showScreen('main');
         Utils.showToast('עזבת את החדר');
+    },
+
+    async testAudio() {
+        console.log('=== AUDIO TEST START ===');
+        
+        // Test 1: Audio Context
+        if (AppState.audioContext) {
+            console.log('✓ Audio Context exists, state:', AppState.audioContext.state);
+            if (AppState.audioContext.state === 'suspended') {
+                try {
+                    await AppState.audioContext.resume();
+                    console.log('✓ Audio Context resumed');
+                } catch (e) {
+                    console.error('✗ Failed to resume Audio Context:', e);
+                }
+            }
+        } else {
+            console.error('✗ No Audio Context found');
+        }
+
+        // Test 2: Local Stream
+        if (AppState.localStream) {
+            console.log('✓ Local stream exists');
+            const audioTracks = AppState.localStream.getAudioTracks();
+            console.log('Audio tracks:', audioTracks.length);
+            audioTracks.forEach((track, i) => {
+                console.log(`Track ${i}: enabled=${track.enabled}, readyState=${track.readyState}`);
+            });
+        } else {
+            console.error('✗ No local stream found');
+        }
+
+        // Test 3: Audio Output Element
+        const audioEl = Elements.audioOutput;
+        console.log('Audio element:', {
+            src: audioEl.srcObject ? 'set' : 'null',
+            paused: audioEl.paused,
+            volume: audioEl.volume,
+            muted: audioEl.muted
+        });
+
+        // Test 4: Gain Nodes
+        console.log('Active gain nodes:', AppState.gainNodes.size);
+        AppState.gainNodes.forEach((nodes, peerId) => {
+            console.log(`Gain node for ${peerId}:`, nodes.gainNode.gain.value);
+        });
+
+        // Test 5: Generate test tone (only for host)
+        if (AppState.isHost && AppState.audioContext) {
+            try {
+                const oscillator = AppState.audioContext.createOscillator();
+                const gainNode = AppState.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(AppState.audioDestination);
+                
+                oscillator.frequency.setValueAtTime(440, AppState.audioContext.currentTime); // A4 note
+                gainNode.gain.setValueAtTime(0.1, AppState.audioContext.currentTime); // Low volume
+                
+                oscillator.start();
+                setTimeout(() => {
+                    oscillator.stop();
+                    console.log('✓ Test tone played');
+                }, 1000);
+                
+                Utils.showToast('מנגן צליל בדיקה...');
+            } catch (e) {
+                console.error('✗ Failed to play test tone:', e);
+            }
+        }
+
+        console.log('=== AUDIO TEST END ===');
+        Utils.showToast('בדיקת אודיו הושלמה - בדוק קונסול');
     }
 };
 
@@ -502,6 +656,7 @@ function initializeApp() {
     Elements.btnJoinConfirm.addEventListener('click', EventHandlers.joinConfirm);
     Elements.btnToggleMic.addEventListener('click', EventHandlers.toggleMicrophone);
     Elements.btnLeaveRoom.addEventListener('click', EventHandlers.leaveRoom);
+    Elements.btnTestAudio.addEventListener('click', EventHandlers.testAudio);
 
     // Numeric input only for room code
     Elements.joinCodeInput.addEventListener('input', (e) => {
