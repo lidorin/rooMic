@@ -10,23 +10,35 @@
 <body>
     <!-- Main Menu Screen -->
     <div id="main-screen" class="screen active">
-        <div class="container">
-            <div class="header">
-                <h1 class="logo">🎤 roomMic</h1>
-                <p class="subtitle">שידור אודיו מרוכז בזמן אמת</p>
+        <div class="main-wrapper">
+            <div class="main-card">
+                <div class="header">
+                    <div class="logo">roomMic <span>🎤</span></div>
+                    <div class="subtitle">שידור אודיו מרוכז בזמן אמת</div>
+                </div>
+                <div class="menu-buttons">
+                    <button id="btn-create-room" class="btn btn-primary btn-large">צור חדר חדש <span>＋</span></button>
+                    <button id="btn-join-room" class="btn btn-secondary btn-large">הצטרף לחדר <span>🔗</span></button>
+                </div>
             </div>
-            
-            <div class="menu-buttons">
-                <button id="btn-create-room" class="btn btn-primary">
-                    <span class="btn-icon">➕</span>
-                    צור חדר חדש
-                </button>
-                
-                <button id="btn-join-room" class="btn btn-secondary">
-                    <span class="btn-icon">🔗</span>
-                    הצטרף לחדר
-                </button>
+            <div class="audio-card">
+                <div class="audio-controls">
+                    <button id="test-audio" class="btn btn-primary">
+                        <span class="icon">🔊</span>
+                        <span class="btn-text">בדוק אודיו</span>
+                    </button>
+                    <div id="audio-status" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">ממתין...</span>
+                    </div>
+                </div>
+                <audio id="audio-output" autoplay controls></audio>
+                <div class="volume-indicator">
+                    <label for="volume-slider">🔊 עוצמת שמע</label>
+                    <input type="range" id="volume-slider" min="0" max="100" value="100">
+                </div>
             </div>
+            <div id="toast-container" class="toast-container"></div>
         </div>
     </div>
 
@@ -136,30 +148,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Audio Controls -->
-    <div class="audio-controls">
-        <button id="test-audio" class="btn btn-primary">
-            <span class="icon">🔊</span>
-            <span class="btn-text">בדוק אודיו</span>
-        </button>
-        <div id="audio-status" class="status-indicator">
-            <span class="status-dot"></span>
-            <span class="status-text">ממתין...</span>
-        </div>
-    </div>
-
-    <!-- Audio Element for Output -->
-    <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px;"></audio>
-
-    <!-- Volume Controls -->
-    <div class="volume-indicator">
-        <label for="volume-slider">🔊 עוצמת שמע</label>
-        <input type="range" id="volume-slider" min="0" max="100" value="100">
-    </div>
-
-    <!-- Toast Container -->
-    <div id="toast-container" class="toast-container"></div>
 
     <style>
         .audio-controls {
