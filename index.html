@@ -97,16 +97,10 @@
                 </button>
                 
                 <div class="audio-controls">
-                    <div class="test-buttons">
-                        <button id="test-audio" class="btn btn-primary">
-                            <span class="icon">🔊</span>
-                            בדוק אודיו
-                        </button>
-                        <button id="run-all-tests" class="btn btn-success">
-                            <span class="icon">✅</span>
-                            בדיקות מקיפות
-                        </button>
-                    </div>
+                    <button id="test-audio" class="btn btn-primary">
+                        <span class="icon">🔊</span>
+                        <span class="btn-text">בדוק אודיו</span>
+                    </button>
                     <div id="audio-status" class="status-indicator">
                         <span class="status-dot"></span>
                         <span class="status-text">ממתין...</span>
@@ -143,37 +137,36 @@
         </div>
     </div>
 
-    <!-- Status Messages -->
-    <div id="status-toast" class="toast">
-        <span id="status-message">מוכן</span>
+    <!-- Audio Controls -->
+    <div class="audio-controls">
+        <button id="test-audio" class="btn btn-primary">
+            <span class="icon">🔊</span>
+            <span class="btn-text">בדוק אודיו</span>
+        </button>
+        <div id="audio-status" class="status-indicator">
+            <span class="status-dot"></span>
+            <span class="status-text">ממתין...</span>
+        </div>
     </div>
 
     <!-- Audio Element for Output -->
     <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px;"></audio>
 
+    <!-- Volume Controls -->
+    <div class="volume-indicator">
+        <label for="volume-slider">🔊 עוצמת שמע</label>
+        <input type="range" id="volume-slider" min="0" max="100" value="100">
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
     <style>
-        .test-buttons {
-            display: flex;
-            gap: 10px;
-        }
-
-        #run-all-tests {
-            background: #28a745;
-        }
-
-        #run-all-tests:hover {
-            background: #218838;
-        }
-
         .audio-controls {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: 15px;
-            margin: 15px 0;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
+            gap: 10px;
+            margin: 10px 0;
         }
 
         .status-indicator {
@@ -205,6 +198,33 @@
 
         #test-audio .icon {
             font-size: 1.2em;
+        }
+
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-text {
+            position: relative;
+            z-index: 1;
+        }
+
+        .icon {
+            position: relative;
+            z-index: 1;
         }
     </style>
 
