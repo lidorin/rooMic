@@ -96,10 +96,16 @@
                     <span class="btn-text">מיקרופון פעיל</span>
                 </button>
                 
-                <button id="btn-test-audio" class="btn btn-outline">
-                    <span class="btn-icon">🔊</span>
-                    בדוק אודיו
-                </button>
+                <div class="audio-controls">
+                    <button id="test-audio" class="btn btn-primary">
+                        <span class="icon">🔊</span>
+                        בדוק אודיו
+                    </button>
+                    <div id="audio-status" class="status-indicator">
+                        <span class="status-dot"></span>
+                        <span class="status-text">ממתין...</span>
+                    </div>
+                </div>
                 
                 <div class="volume-indicator">
                     <div class="volume-bars">
@@ -137,7 +143,47 @@
     </div>
 
     <!-- Audio Element for Output -->
-    <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px; display: none;"></audio>
+    <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px;"></audio>
+
+    <style>
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .status-dot.active {
+            background: #4CAF50;
+            box-shadow: 0 0 5px #4CAF50;
+        }
+
+        #test-audio {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 8px 15px;
+            font-size: 1.1em;
+        }
+
+        #test-audio .icon {
+            font-size: 1.2em;
+        }
+    </style>
 
     <!-- Scripts -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
