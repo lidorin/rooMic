@@ -97,10 +97,16 @@
                 </button>
                 
                 <div class="audio-controls">
-                    <button id="test-audio" class="btn btn-primary">
-                        <span class="icon">🔊</span>
-                        בדוק אודיו
-                    </button>
+                    <div class="test-buttons">
+                        <button id="test-audio" class="btn btn-primary">
+                            <span class="icon">🔊</span>
+                            בדוק אודיו
+                        </button>
+                        <button id="run-all-tests" class="btn btn-success">
+                            <span class="icon">✅</span>
+                            בדיקות מקיפות
+                        </button>
+                    </div>
                     <div id="audio-status" class="status-indicator">
                         <span class="status-dot"></span>
                         <span class="status-text">ממתין...</span>
@@ -146,11 +152,28 @@
     <audio id="audio-output" autoplay controls style="width: 100%; margin-top: 10px;"></audio>
 
     <style>
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        #run-all-tests {
+            background: #28a745;
+        }
+
+        #run-all-tests:hover {
+            background: #218838;
+        }
+
         .audio-controls {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin: 10px 0;
+            justify-content: space-between;
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
         }
 
         .status-indicator {

@@ -54,7 +54,8 @@ const Elements = {
     audioStatus: document.getElementById('audio-status'),
     audioStatusDot: document.querySelector('.status-dot'),
     audioStatusText: document.querySelector('.status-text'),
-    testAudioBtn: document.getElementById('test-audio')
+    testAudioBtn: document.getElementById('test-audio'),
+    runAllTestsBtn: document.getElementById('run-all-tests')
 };
 
 // Utility Functions
@@ -688,6 +689,157 @@ const EventHandlers = {
     }
 };
 
+// Test Suite
+const TestSuite = {
+    async runAllTests() {
+        console.log('=== STARTING COMPREHENSIVE AUDIO TEST SUITE ===');
+        
+        // Basic Initialization Tests
+        await this.testBasicInitialization();
+        
+        // Role-specific Tests
+        if (AppState.isHost) {
+            await this.testHostFunctionality();
+        } else {
+            await this.testParticipantFunctionality();
+        }
+        
+        // UI Tests
+        await this.testUIElements();
+        
+        console.log('=== TEST SUITE COMPLETED ===');
+    },
+    
+    async testBasicInitialization() {
+        console.log('\n--- Testing Basic Initialization ---');
+        
+        // Test 1: Audio Context
+        if (!AppState.audioContext) {
+            console.error('✗ Audio Context not initialized');
+            const success = await AudioManager.initializeAudioContext();
+            if (!success) {
+                throw new Error('Failed to initialize Audio Context');
+            }
+        }
+        console.log('✓ Audio Context initialized');
+        
+        // Test 2: Microphone Access
+        if (!AppState.localStream) {
+            console.error('✗ No microphone access');
+            const granted = await AudioManager.requestMicrophone();
+            if (!granted) {
+                throw new Error('Failed to get microphone access');
+            }
+        }
+        console.log('✓ Microphone access granted');
+        
+        // Test 3: Audio Destination
+        if (!AppState.audioDestination) {
+            console.error('✗ No Audio Destination');
+            throw new Error('Audio Destination not created');
+        }
+        console.log('✓ Audio Destination exists');
+        
+        // Test 4: Audio Element
+        const audioEl = Elements.audioOutput;
+        if (!audioEl.srcObject) {
+            console.error('✗ Audio Element not connected');
+            throw new Error('Audio Element not properly connected');
+        }
+        console.log('✓ Audio Element connected');
+    },
+    
+    async testHostFunctionality() {
+        console.log('\n--- Testing Host Functionality ---');
+        
+        // Test 1: Room Creation
+        if (!AppState.currentRoom) {
+            console.error('✗ No room code');
+            throw new Error('Room not created');
+        }
+        console.log('✓ Room created:', AppState.currentRoom);
+        
+        // Test 2: Broadcasting
+        if (!AppState.isConnected) {
+            console.error('✗ Not broadcasting');
+            throw new Error('Host not broadcasting');
+        }
+        console.log('✓ Broadcasting active');
+        
+        // Test 3: Audio Mixer
+        if (AppState.gainNodes.size === 0) {
+            console.error('✗ No gain nodes');
+            throw new Error('Audio mixer not initialized');
+        }
+        console.log('✓ Audio mixer active');
+        
+        // Test 4: Local Audio
+        const localGain = AppState.gainNodes.get('local');
+        if (!localGain) {
+            console.error('✗ No local audio gain');
+            throw new Error('Local audio not added to mix');
+        }
+        console.log('✓ Local audio in mix');
+    },
+    
+    async testParticipantFunctionality() {
+        console.log('\n--- Testing Participant Functionality ---');
+        
+        // Test 1: Room Connection
+        if (!AppState.currentRoom) {
+            console.error('✗ Not connected to room');
+            throw new Error('Not connected to room');
+        }
+        console.log('✓ Connected to room:', AppState.currentRoom);
+        
+        // Test 2: Audio Reception
+        if (!AppState.audioContext) {
+            console.error('✗ No audio context for reception');
+            throw new Error('Cannot receive audio');
+        }
+        console.log('✓ Audio reception ready');
+        
+        // Test 3: Audio Transmission
+        if (!AppState.localStream) {
+            console.error('✗ No local stream for transmission');
+            throw new Error('Cannot transmit audio');
+        }
+        console.log('✓ Audio transmission ready');
+    },
+    
+    async testUIElements() {
+        console.log('\n--- Testing UI Elements ---');
+        
+        // Test 1: Test Button
+        if (!Elements.testAudioBtn) {
+            console.error('✗ Test button not found');
+            throw new Error('Test button missing');
+        }
+        console.log('✓ Test button exists');
+        
+        // Test 2: Status Indicator
+        if (!Elements.audioStatus) {
+            console.error('✗ Status indicator not found');
+            throw new Error('Status indicator missing');
+        }
+        console.log('✓ Status indicator exists');
+        
+        // Test 3: Audio Element
+        if (!Elements.audioOutput) {
+            console.error('✗ Audio element not found');
+            throw new Error('Audio element missing');
+        }
+        console.log('✓ Audio element exists');
+        
+        // Test 4: Volume Control
+        if (!Elements.volumeControl) {
+            console.error('✗ Volume control not found');
+            throw new Error('Volume control missing');
+        }
+        console.log('✓ Volume control exists');
+    }
+};
+
 // Initialize Application
 function initializeApp() {
     console.log('roomMic 2.0 - Starting application...');
@@ -750,11 +902,23 @@ function initializeApp() {
 // Start the application
 document.addEventListener('DOMContentLoaded', initializeApp);
 
-// Audio Test Button
-Elements.testAudioBtn.addEventListener('click', async () => {
-    Elements.testAudioBtn.disabled = true;
-    Elements.testAudioBtn.style.opacity = '0.7';
-    await AudioManager.testAudio();
-    Elements.testAudioBtn.disabled = false;
-    Elements.testAudioBtn.style.opacity = '1';
+// Comprehensive Test Button
+Elements.runAllTestsBtn.addEventListener('click', async () => {
+    try {
+        Elements.runAllTestsBtn.disabled = true;
+        Elements.runAllTestsBtn.style.opacity = '0.7';
+        AudioStatus.setStatus('testing', 'מבצע בדיקות מקיפות...');
+        
+        await TestSuite.runAllTests();
+        
+        AudioStatus.setStatus('active', 'כל הבדיקות עברו בהצלחה!');
+        Utils.showToast('כל הבדיקות עברו בהצלחה!');
+    } catch (error) {
+        console.error('Comprehensive test suite failed:', error);
+        AudioStatus.setStatus('error', 'שגיאה בבדיקות');
+        Utils.showToast('שגיאה בבדיקות: ' + error.message);
+    } finally {
+        Elements.runAllTestsBtn.disabled = false;
+        Elements.runAllTestsBtn.style.opacity = '1';
+    }
 }); 
